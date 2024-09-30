@@ -3,12 +3,11 @@ import torch
 from .model.cloth_masker import AutoMasker as AM
 from .model.cloth_masker import vis_mask
 from .model.pipeline import CatVTONPipeline
-from .utils import resize_and_crop, resize_and_padding
 from diffusers.image_processor import VaeImageProcessor
 from huggingface_hub import snapshot_download
 from PIL import Image
+import torchvision.transforms as T
 import numpy as np
-
 from torchvision.transforms.functional import to_pil_image, to_tensor
 
 class LoadCatVTONPipeline:
@@ -45,7 +44,6 @@ class LoadCatVTONPipeline:
         )
         return (pipeline,)
 
-
 class LoadAutoMasker:
     display_name = "Load AutoMask Generator"
 
@@ -70,7 +68,6 @@ class LoadAutoMasker:
             device='cuda', 
         )
         return (automasker,)
-
 
 class CatVTON:
     display_name = "TryOn by CatVTON"
@@ -100,7 +97,6 @@ class CatVTON:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
     FUNCTION = "generate"
-
     CATEGORY = "CatVTON" 
 
     def generate(
@@ -131,7 +127,6 @@ class CatVTON:
         result_image = to_tensor(result_image).permute(1, 2, 0).unsqueeze(0)
         return (result_image,)
 
-
 class AutoMasker:
     display_name = "Auto Mask Generation"
 
@@ -146,27 +141,85 @@ class AutoMasker:
         }
 
     RETURN_TYPES = ("IMAGE", "IMAGE")
-    RETURN_NAMES = ("image", "image_masked")
+    RETURN_NAMES = ("mask", "masked_image")
     FUNCTION = "generate"
+    CATEGORY = "CatVTON"
 
-    CATEGORY = "CatVTON" 
+    def generate(self, pipe, target_image, cloth_type):
+        print(f"Input target_image shape: {target_image.shape}")
 
-    def generate(
-        self, pipe, target_image, cloth_type
-    ):
-        target_image = target_image.squeeze(0).permute(2, 0, 1)
-        target_image = to_pil_image(target_image)
-        person_image = resize_and_crop(target_image, (768, 1024))
-        mask = pipe(
-            person_image,
-            cloth_type
-        )['mask']
-        
-        masked_image = vis_mask(person_image, mask)
-        mask = to_tensor(mask).permute(1, 2, 0).repeat(1, 1, 3).unsqueeze(0)
-        masked_image = to_tensor(masked_image).permute(1, 2, 0).unsqueeze(0)
+        # Store original shape
+        original_shape = target_image.shape
+
+        # Ensure target_image is a PyTorch tensor
+        if not isinstance(target_image, torch.Tensor):
+            target_image = torch.from_numpy(target_image)
+
+        # Remove batch dimension if present
+        if target_image.dim() == 4:
+            target_image = target_image.squeeze(0)
+
+        # Ensure the tensor is in the correct format (C, H, W)
+        if target_image.shape[-1] == 3:
+            target_image = target_image.permute(2, 0, 1)
+
+        # Store original size
+        original_height, original_width = target_image.shape[1:]
+
+        # Normalize to 0-1 range if necessary
+        if target_image.max() > 1.0:
+            target_image = target_image.float() / 255.0
+
+        # Log input size
+        print(f"Processing image of size: {target_image.shape}")
+
+        # Resize target image for processing (keep the original size)
+        resize_transform = T.Resize((original_height, original_width), antialias=True)
+        processed_image = resize_transform(target_image)
+
+        # Convert to PIL Image for pipe input
+        pil_image = T.ToPILImage()(processed_image)
+
+        # Generate mask
+        try:
+            result = pipe(pil_image, cloth_type)
+            mask = result['mask']
+        except Exception as e:
+            print(f"Error in mask generation: {e}")
+            # Return black images if mask generation fails
+            black_image = torch.zeros((original_height, original_width, 3), dtype=torch.uint8)
+            return (black_image.unsqueeze(0), black_image.unsqueeze(0))
+
+        # Ensure mask is a PyTorch tensor
+        if isinstance(mask, Image.Image):
+            mask = T.ToTensor()(mask)
+        elif not isinstance(mask, torch.Tensor):
+            mask = torch.from_numpy(mask).float()
+
+        # Resize the mask to match the original size of the target image
+        mask = T.Resize((original_height, original_width), antialias=False)(mask)
+
+        # Ensure mask is binary and 3-channel
+        mask = (mask > 0.5).float()
+        if mask.shape[0] == 1:
+            mask = mask.repeat(3, 1, 1)
+
+        # Create masked image
+        masked_image = target_image * mask + target_image * (1 - mask)
+
+        # Ensure output is in the expected range (0-255) and format (H, W, C)
+        mask = (mask.permute(1, 2, 0) * 255).byte()
+        masked_image = (masked_image.permute(1, 2, 0) * 255).byte()
+
+        # Re-add batch dimension
+        mask = mask.unsqueeze(0)
+        masked_image = masked_image.unsqueeze(0)
+
+        print(f"Output mask shape: {mask.shape}")
+        print(f"Output masked_image shape: {masked_image.shape}")
 
         return (mask, masked_image)
+
 
 
 _export_classes = [
@@ -181,3 +234,6 @@ NODE_CLASS_MAPPINGS = {c.__name__: c for c in _export_classes}
 NODE_DISPLAY_NAME_MAPPINGS = {
     c.__name__: getattr(c, "display_name", c.__name__) for c in _export_classes
 }
+
+print(f"AutoMasker RETURN_TYPES: {AutoMasker.RETURN_TYPES}")
+print(f"AutoMasker RETURN_NAMES: {AutoMasker.RETURN_NAMES}")
