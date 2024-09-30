@@ -51,7 +51,7 @@ class LoadAutoMasker:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "catvton_path": ("STRING", {"default": "zhengchong/CatVTON"}),
+                "catvton_path": ("STRING", {"default": "Sirajsoft/VTON"}),
             }
         }
 
