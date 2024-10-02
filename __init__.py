@@ -18,10 +18,10 @@ def INPUT_TYPES(cls):
     return {
         "required": {
             # Specify the full local path for sd15_inpaint model
-            "sd15_inpaint_path": ("STRING", {"default": "/CatVTON/stable-diffusion-inpainting"}),  
+            "sd15_inpaint_path": ("STRING", {"default": "/models/CatVTON/stable-diffusion-inpainting"}),  
             
             # Specify the full local path for CatVTON model
-            "catvton_path": ("STRING", {"default": "/CatVTON"}),  
+            "catvton_path": ("STRING", {"default": "models/CatVTON"}),  
 
             "mixed_precision": (["fp32", "fp16", "bf16"],),
         }
