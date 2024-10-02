@@ -13,15 +13,19 @@ from torchvision.transforms.functional import to_pil_image, to_tensor
 class LoadCatVTONPipeline:
     display_name = "Load CatVTON Pipeline"
 
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "sd15_inpaint_path": ("STRING", {"default": "runwayml/stable-diffusion-inpainting"}),
-                "catvton_path": ("STRING", {"default": "zhengchong/CatVTON"}),
-                "mixed_precision": (["fp32", "fp16", "bf16"],),
-            }
+@classmethod
+def INPUT_TYPES(cls):
+    return {
+        "required": {
+            # Specify the full local path for sd15_inpaint model
+            "sd15_inpaint_path": ("STRING", {"default": "/CatVTON/stable-diffusion-inpainting"}),  
+            
+            # Specify the full local path for CatVTON model
+            "catvton_path": ("STRING", {"default": "/CatVTON"}),  
+
+            "mixed_precision": (["fp32", "fp16", "bf16"],),
         }
+    }
 
     RETURN_TYPES = ("MODEL",)
     RETURN_NAMES = ("pipe",)
